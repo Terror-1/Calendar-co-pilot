@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Calendar co-pilot</title>
+    <link rel="stylesheet" type="text/css" href="style.css" />
+  </head>
+  <body>
+    <form id="availabilityForm">
+      <div>
+        <label for="tutorId">Tutor ID:</label>
+        <input type="text" id="tutorId" name="tutorId" required />
+      </div>
+      <div>
+        <label for="availability">Availability:</label>
+        <textarea id="availability" name="availability" required></textarea>
+      </div>
+      <button type="submit">Submit</button>
+    </form>
+    <div class="response" id="response"></div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
