@@ -20,6 +20,7 @@
   },
   "homepage": "https://github.com/Terror-1/Calendar-co-pilot#readme",
   "dependencies": {
+    "@google/generative-ai": "^0.15.0",
     "body-parser": "^1.20.2",
     "chrono-node": "^2.7.6",
     "compromise": "^14.13.0",

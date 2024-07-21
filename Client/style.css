@@ -54,3 +54,6 @@ button:hover {
 .response.error {
   color: red;
 }
+.hidden {
+  display: none;
+}

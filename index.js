@@ -4,8 +4,8 @@ const mongoose = require("mongoose");
 const bodyParser = require("body-parser");
 const Tutor = require("./models/Tutor");
 const cors = require("cors");
-const nlp = require("compromise");
-const chrono = require("chrono-node");
+// const nlp = require("compromise");
+// const chrono = require("chrono-node");
 
 // const { OpenAI } = require("openai");
 
@@ -13,6 +13,11 @@ const chrono = require("chrono-node");
 //   api_key: process.env.OPENAI_API_KEY,
 // });
 
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+
+const genAI = new GoogleGenerativeAI(process.env.Gemini_API_KEY);
+
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
@@ -27,93 +32,56 @@ mongoose
   })
   .catch((e) => console.log(e));
 // api route
+app.post("/parse-availability", async (req, res) => {
+  const { tutorId, availability } = req.body;
+  const parsedAvailability = await inputParser(availability);
+  if (parsedAvailability) {
+    res.send({
+      success: true,
+      tutorId: tutorId,
+      parsedAvailability: parsedAvailability,
+    });
+  } else {
+    res
+      .status(400)
+      .send({ success: false, message: "Please enter valid availability" });
+  }
+});
+
 app.post("/set-availability", async (req, res) => {
   const { tutorId, availability } = req.body;
-  const parsedAvailability = availability;
-  inputParser(availability);
 
   try {
     await Tutor.findOneAndUpdate(
       { tutorId },
-      { availability: parsedAvailability },
+      { availability },
       { upsert: true, new: true }
     );
-    res.send({ success: true });
+    res.json({ success: true });
   } catch (err) {
-    res.status(500).send({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
 async function inputParser(availability) {
-  const doc = nlp(availability);
-  const timeslots = [];
-
-  // Define patterns for days and times
-  const daysOfWeek = [
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-    "Sunday",
-  ];
-  const relativeDays = {
-    weekends: ["Friday", "Saturday"],
-    weekdays: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"],
-  };
-
-  const timeRanges = chrono.parse(availability);
-  const dayPatterns = doc
-    .match(
-      "(monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekends|weekdays|otherwise)"
-    )
-    .out("array");
-
-  function normalizeTime(time) {
-    const parsedTime = chrono.parse(time);
-    if (parsedTime.length > 0) {
-      const { start, end } = parsedTime[0];
-      const startTime = start
-        .date()
-        .toISOString()
-        .split("T")[1]
-        .substring(0, 5);
-      const endTime = end
-        ? end.date().toISOString().split("T")[1].substring(0, 5)
-        : null;
-      return { startTime, endTime };
+  const prompt = `Extract the availability schedule from the following text "${availability}" where weekends are Friday and Saturday and format it as an array of JSON objects, with this schema: [
+    {
+      day: { type: String, required: true },
+      startTime: { type: String, required: true },
+      endTime: { type: String, required: true },
     }
-    return { startTime: null, endTime: null };
+  ] and in case it can't handle the prompt, return JSON with a null value`;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = await response.text();
+    const cleanedResponse = JSON.parse(
+      text.replace("json", "").replace(/```/g, "").trim()
+    );
+
+    return cleanedResponse || null;
+  } catch (error) {
+    return null;
   }
-
-  const mentionedDays = new Set();
-  timeRanges.forEach((range) => {
-    const { startTime, endTime } = normalizeTime(range.text);
-
-    dayPatterns.forEach((dayPattern) => {
-      if (daysOfWeek.includes(dayPattern)) {
-        timeslots.push({ day: dayPattern, startTime, endTime });
-        mentionedDays.add(dayPattern);
-      } else if (relativeDays[dayPattern]) {
-        relativeDays[dayPattern].forEach((day) => {
-          timeslots.push({ day, startTime, endTime });
-          mentionedDays.add(day);
-        });
-      }
-    });
-  });
-
-  if (dayPatterns.includes("otherwise")) {
-    const otherwiseDays = daysOfWeek.filter((day) => !mentionedDays.has(day));
-    timeRanges.forEach((range) => {
-      const { startTime, endTime } = normalizeTime(range.text);
-      otherwiseDays.forEach((day) => {
-        timeslots.push({ day, startTime, endTime });
-      });
-    });
-  }
-
-  console.log(timeslots);
-  return timeslots;
 }
